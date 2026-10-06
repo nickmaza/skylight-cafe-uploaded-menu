@@ -3,11 +3,20 @@ name: Publish site
 # Runs whenever anything is pushed or uploaded to main, including a new menu
 # file in the menu/ folder. Only index.html and the newest menu file are
 # published, so nothing else uploaded to the repo ever goes live.
+#
+# It also runs on a schedule to redraw menu/status.png (Open now / Closed),
+# which the Involve U page shows, since that page can't run scripts.
 
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
+  schedule:
+    # GitHub cron is in UTC. Every 15 minutes from 9am to 2pm Chicago time on
+    # weekdays (covers both daylight and standard time), plus just after
+    # midnight so "Closed today" / "Opens at 11am today" switch over each day.
+    - cron: "*/15 14-19 * * 1-5"
+    - cron: "5 5,6 * * *"
 
 permissions:
   contents: read
@@ -35,6 +44,14 @@ jobs:
 
       - name: Install image tools
         run: pip install pillow
+
+      - name: Download the site fonts
+        continue-on-error: true    # falls back to a plain font if this fails
+        run: |
+          mkdir -p fonts
+          base=https://raw.githubusercontent.com/google/fonts/main/ofl
+          curl -sfL -o "fonts/BigShouldersDisplay[wght].ttf" "$base/bigshouldersdisplay/BigShouldersDisplay%5Bwght%5D.ttf"
+          curl -sfL -o "fonts/AtkinsonHyperlegible-Regular.ttf" "$base/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf"
 
       - name: Pick the newest menu file
         run: |
@@ -106,6 +123,68 @@ jobs:
               draw.text((int(bar * 0.4), top), label, fill=(246, 195, 36), font=font)
               out_img.save(site / "menu" / "today.png", optimize=True)
               print(f"Published menu/today.png from {newest_img.name} ({label})")
+
+          # ---- Café open/closed status image (menu/status.png) ----
+          from PIL import Image, ImageDraw, ImageFont
+          CHI = ZoneInfo("America/Chicago")
+          HOURS = {0: (11*60, 13*60), 1: (11*60, 13*60), 2: (11*60, 13*60), 3: (11*60, 13*60), 4: (11*60, 13*60)}  # Mon=0 .. Fri=4
+          DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+          def clock(mins):
+              h, m = divmod(mins, 60)
+              ap = "am" if h < 12 else "pm"
+              h = h % 12 or 12
+              return f"{h}:{m:02d}{ap}" if m else f"{h}{ap}"
+
+          def status_for(now):
+              day, mins = now.weekday(), now.hour * 60 + now.minute
+              today = HOURS.get(day)
+              if today and today[0] <= mins < today[1]:
+                  return "open", "Open now", f"Serving lunch until {clock(today[1])} on the 12th floor"
+              if today and mins < today[0]:
+                  return "soon", f"Opens at {clock(today[0])} today", f"Lunch {clock(today[0])}–{clock(today[1])} on the 12th floor"
+              for i in range(1, 8):
+                  d = (day + i) % 7
+                  if d in HOURS:
+                      o, c = HOURS[d]
+                      when = "tomorrow" if i == 1 else DAYS[d]
+                      head = "Closed for the day" if today else "Closed today"
+                      return "closed", head, f"Next open {when}, {clock(o)}–{clock(c)}"
+              return "closed", "Closed", "Check nl.edu/dining for the schedule"
+
+          def font(path, size, variation=None):
+              try:
+                  f = ImageFont.truetype(path, size)
+                  if variation:
+                      f.set_variation_by_name(variation)
+                  return f
+              except Exception:
+                  try:
+                      return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+                  except OSError:
+                      return ImageFont.load_default(size=size)
+
+          def draw_status(now, out_path, fonts_dir="fonts"):
+              state, head, sub = status_for(now)
+              sub = f"{sub}  (as of {clock(now.hour*60+now.minute)} Chicago time)"
+              S = 2                                         # draw at 2x for sharp text
+              W, H = 760 * S, 104 * S
+              img = Image.new("RGB", (W, H), (13, 59, 122))
+              d = ImageDraw.Draw(img)
+              big = font(f"{fonts_dir}/BigShouldersDisplay[wght].ttf", 50 * S, b"ExtraBold")
+              small = font(f"{fonts_dir}/AtkinsonHyperlegible-Regular.ttf", 19 * S)
+              lamp = {"open": (57, 217, 138), "soon": (246, 195, 36), "closed": (138, 151, 173)}[state]
+              cy, r = 34 * S, 8 * S
+              if state != "closed":                         # soft glow ring like the original
+                  d.ellipse((6*S - 4*S, cy - r - 4*S, 6*S + 2*r + 4*S, cy + r + 4*S), fill=tuple(int(c*.35 + v*.65) for c, v in zip(lamp, (13, 59, 122))))
+              d.ellipse((6*S, cy - r, 6*S + 2*r, cy + r), fill=lamp)
+              d.text((34 * S, 4 * S), head, font=big, fill=(255, 255, 255))
+              d.text((34 * S, 66 * S), sub, font=small, fill=(216, 230, 247))
+              img.save(out_path, optimize=True)
+              return state, head, sub
+
+          state, head, sub = draw_status(datetime.now(CHI), site / "menu" / "status.png")
+          print(f"Published menu/status.png: {head} / {sub}")
           PY
 
       - uses: actions/upload-pages-artifact@v3
