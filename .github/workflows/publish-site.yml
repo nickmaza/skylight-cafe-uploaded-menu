@@ -29,6 +29,13 @@ jobs:
         with:
           fetch-depth: 0          # full history, so we can tell which file was uploaded last
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image tools
+        run: pip install pillow
+
       - name: Pick the newest menu file
         run: |
           python3 - <<'PY'
@@ -45,6 +52,7 @@ jobs:
           shutil.copy("index.html", site / "index.html")
 
           newest, newest_time = None, 0
+          newest_img, newest_img_time = None, 0
           menu_dir = Path("menu")
           for f in (menu_dir.iterdir() if menu_dir.is_dir() else []):
               ext = f.suffix.lower().lstrip(".")
@@ -57,6 +65,8 @@ jobs:
                                    capture_output=True, text=True).stdout.strip()
               if out and int(out) > newest_time:
                   newest, newest_time = f, int(out)
+              if out and ext in IMAGES and int(out) > newest_img_time:
+                  newest_img, newest_img_time = f, int(out)
 
           if newest is None:
               print("No menu file found in menu/. The site will say no menu is posted.")
@@ -71,6 +81,31 @@ jobs:
               }
               (site / "menu" / "info.json").write_text(json.dumps(info))
               print(f"Publishing {newest.name} (posted {info['posted_at']})")
+
+          # menu/today.png: the newest screenshot, with the posting date stamped
+          # across the top. The Involve U page shows this file, since that page
+          # can't run scripts to read info.json.
+          if newest_img is not None:
+              from PIL import Image, ImageDraw, ImageFont
+              when = datetime.fromtimestamp(newest_img_time, ZoneInfo("America/Chicago"))
+              hour = when.strftime("%I").lstrip("0")
+              label = f"Posted {when.strftime('%A, %B')} {when.day} at {hour}:{when.strftime('%M')}{when.strftime('%p').lower()}"
+              img = Image.open(newest_img).convert("RGB")
+              if img.width > 1600:
+                  img = img.resize((1600, round(img.height * 1600 / img.width)))
+              bar = max(44, img.width // 22)
+              out_img = Image.new("RGB", (img.width, img.height + bar), (13, 59, 122))
+              out_img.paste(img, (0, bar))
+              size = int(bar * 0.5)
+              try:
+                  font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+              except OSError:
+                  font = ImageFont.load_default(size=size)
+              draw = ImageDraw.Draw(out_img)
+              top = (bar - (draw.textbbox((0, 0), label, font=font)[3])) // 2
+              draw.text((int(bar * 0.4), top), label, fill=(246, 195, 36), font=font)
+              out_img.save(site / "menu" / "today.png", optimize=True)
+              print(f"Published menu/today.png from {newest_img.name} ({label})")
           PY
 
       - uses: actions/upload-pages-artifact@v3
