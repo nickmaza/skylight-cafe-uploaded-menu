@@ -1,0 +1,81 @@
+name: Publish site
+
+# Runs whenever anything is pushed or uploaded to main, including a new menu
+# file in the menu/ folder. Only index.html and the newest menu file are
+# published, so nothing else uploaded to the repo ever goes live.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history, so we can tell which file was uploaded last
+
+      - name: Pick the newest menu file
+        run: |
+          python3 - <<'PY'
+          import json, shutil, subprocess
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          IMAGES = {"png", "jpg", "jpeg", "webp", "gif"}
+          TEXT = {"csv", "txt"}
+          MAX_MB = 20
+
+          site = Path("_site"); (site / "menu").mkdir(parents=True)
+          shutil.copy("index.html", site / "index.html")
+
+          newest, newest_time = None, 0
+          menu_dir = Path("menu")
+          for f in (menu_dir.iterdir() if menu_dir.is_dir() else []):
+              ext = f.suffix.lower().lstrip(".")
+              if not f.is_file() or ext not in IMAGES | TEXT:
+                  continue
+              if f.stat().st_size > MAX_MB * 1024 * 1024:
+                  print(f"Skipping {f.name}: larger than {MAX_MB} MB")
+                  continue
+              out = subprocess.run(["git", "log", "-1", "--format=%ct", "--", str(f)],
+                                   capture_output=True, text=True).stdout.strip()
+              if out and int(out) > newest_time:
+                  newest, newest_time = f, int(out)
+
+          if newest is None:
+              print("No menu file found in menu/. The site will say no menu is posted.")
+          else:
+              ext = newest.suffix.lower().lstrip(".")
+              shutil.copy(newest, site / "menu" / f"current.{ext}")
+              posted = datetime.fromtimestamp(newest_time, ZoneInfo("America/Chicago"))
+              info = {
+                  "file": f"current.{ext}",
+                  "type": "image" if ext in IMAGES else ext,
+                  "posted_at": posted.isoformat(timespec="seconds"),
+              }
+              (site / "menu" / "info.json").write_text(json.dumps(info))
+              print(f"Publishing {newest.name} (posted {info['posted_at']})")
+          PY
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
