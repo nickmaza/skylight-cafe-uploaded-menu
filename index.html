@@ -336,7 +336,6 @@
       <ul class="plain">
         <li>Take the elevators in the 18 S. Michigan building up to 12. The café is on the newly renovated floor.</li>
         <li>Nearest 'L': Washington/Wabash (Brown, Green, Orange, Pink, Purple) and Monroe (Red, Blue).</li>
-        <li>Call the café: <a href="tel:+13122613050">(312) 261-3050</a></li>
         <li><a href="https://www.google.com/maps/search/?api=1&query=18+S+Michigan+Ave+Chicago+IL+60603" target="_blank" rel="noopener">Open in Google Maps</a></li>
       </ul>
     </section>
@@ -369,7 +368,7 @@
       </details>
       <details>
         <summary>Can I order ahead?</summary>
-        <p>Yes. Order on the café's <a href="https://toast.app/r/national-louis-university-kendall-12th-floor/order" target="_blank" rel="noopener">Toast page</a> and pick up on the 12th floor, or call <a href="tel:+13122613050">(312) 261-3050</a>.</p>
+        <p>Yes. Order on the café's <a href="https://toast.app/r/national-louis-university-kendall-12th-floor/order" target="_blank" rel="noopener">Toast page</a> and pick up on the 12th floor.</p>
       </details>
       <details>
         <summary>Where can I find allergen information?</summary>
@@ -673,9 +672,9 @@ function showNoMenu(couldNotLoad = false) {
   document.getElementById("menu-updated").textContent = "";
   document.getElementById("menu-body").innerHTML = couldNotLoad
     ? `<div class="empty"><strong>The menu couldn't be loaded right now.</strong>
-         <p>Refresh the page in a moment, or call the café at <a href="tel:+13122613050">(312) 261-3050</a>.</p></div>`
+         <p>Refresh the page in a moment.</p></div>`
     : `<div class="empty"><strong>No menu posted yet today.</strong>
-         <p>The menu is usually posted before lunch. Check back soon, or call the café at <a href="tel:+13122613050">(312) 261-3050</a>.</p></div>`;
+         <p>The menu is usually posted before lunch. Check back soon.</p></div>`;
 }
 
 async function loadMenu() {
@@ -701,7 +700,6 @@ async function loadMenu() {
     body.innerHTML = `${notice}
       <figure class="menu-image">
         <img alt="Skylight Café menu posted ${esc(postedLabel(info.posted_at))}">
-        <figcaption>This menu was posted as an image. If you need it read aloud, call the café at <a href="tel:+13122613050">(312) 261-3050</a>.</figcaption>
       </figure>`;
     const img = body.querySelector("img");
     img.addEventListener("error", () => showNoMenu(true), { once: true });
