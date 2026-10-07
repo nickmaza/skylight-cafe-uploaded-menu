@@ -166,7 +166,6 @@ jobs:
 
           def draw_status(now, out_path, fonts_dir="fonts"):
               state, head, sub = status_for(now)
-              sub = f"{sub}  (as of {clock(now.hour*60+now.minute)} Chicago time)"
               S = 2                                         # draw at 2x for sharp text
               W, H = 760 * S, 104 * S
               img = Image.new("RGB", (W, H), (13, 59, 122))
